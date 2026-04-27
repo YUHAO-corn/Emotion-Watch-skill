@@ -1,5 +1,7 @@
 # Emotion Watch
 
+> **Platform:** macOS only (requires built-in camera) · **Runtime:** [OpenClaw](https://github.com/openclaw/openclaw) · **Vision:** MiniMax-VL-01
+
 An OpenClaw skill that silently monitors your facial stress signals and sends gentle nudges before you hit a breaking point.
 
 Built for people with alexithymia — a neurological condition where you can't feel your own emotions building up. Job coaches watch for the signs you can't see yourself. This skill does the same thing, running quietly in the background.
