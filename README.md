@@ -1,54 +1,53 @@
 # Emotion Watch
 
-> macOS · 100% local · MediaPipe blendshapes · Works with OpenClaw, Claude Code, and other CLI agents
+> macOS · local MediaPipe · OpenClaw skill · also works with other CLI agents
 
-Emotion Watch is a local stress-signal monitor for people with alexithymia: people who may not notice their own stress building until it is too late.
+Emotion Watch is a small local monitor for people who do not reliably notice stress building in their own body.
 
-It opens a small webcam dashboard, reads facial tension through MediaPipe blendshapes, and writes a gentle alert to `/tmp/oc_emotion_alert.json` when sustained stress is detected. Any agent or CLI can watch that file and relay the message back to the user.
+It opens a webcam dashboard, reads facial tension with MediaPipe blendshapes, and writes an alert file when the stress score stays high for a few readings. OpenClaw, Claude Code, or any other CLI agent can pick up that file and remind the user to take a break.
 
-It does not "surveil" you. It quietly observes the signals you may not be able to feel yourself.
-
-> Your face is always talking. You just can't hear it.
-> Emotion Watch listens for you.
+The idea is simple: a job coach can sometimes see overload before the person feels it. Emotion Watch tries to keep that early-warning loop around when the coach is not there.
 
 ## demo
 
-Video and screenshots are coming soon.
+Video and screenshots are not uploaded yet.
 
-<!-- TODO: add demo video/GIF/screenshots -->
+The current build has a live dashboard:
 
-The current app already includes a live visual dashboard:
+- webcam preview on the left
+- background pixelated for privacy, with only the face area visible
+- stress score and signal bars on the right
+- current alert message, streak count, and cooldown status
 
-- left: webcam preview with mosaic privacy; the background is pixelated and only the face area is revealed
-- right: real-time stress score, signal bars, streak counter, cooldown, and active alert message
+## why this exists
 
-## who this is for
+For some people with alexithymia, "I am getting overwhelmed" is not an obvious internal signal. The first signs may be physical: a locked jaw, tight brows, pressed lips, eye strain, or a face that suddenly goes very still.
 
-Some people with alexithymia do not get the internal signal that says "I need a break." Their face may show the signs first: brow tension, lip pressing, eye strain, a frozen expression. A human job coach can notice those signs and gently intervene before a workplace meltdown.
+A job coach can notice those signs and say something small before the situation gets worse. Not a lecture. More like: stand up, drink water, breathe, step away for two minutes.
 
-But job coaches are not always present. Emotion Watch is a lightweight electronic job coach that keeps the early warning loop running when the person is working independently.
+That is the behavior this project is trying to copy.
 
 ## how it works
 
 ```text
-Python monitor starts
+python3 scripts/emotion_watch.py
     ↓
-OpenCV reads webcam frames
+OpenCV reads the webcam
     ↓
-MediaPipe FaceLandmarker extracts 52 face blendshapes
+MediaPipe FaceLandmarker extracts 52 blendshapes
     ↓
-Emotion Watch computes a stress score from four signals
+Emotion Watch calculates stress from four local signals
     ↓
-If stress ≥ 60 for 3 consecutive readings, write an alert JSON
+If stress stays high for 3 readings, it writes /tmp/oc_emotion_alert.json
     ↓
-OpenClaw / Claude Code / any CLI agent reads the alert and reminds the user
+OpenClaw or another CLI agent reads the message and nudges the user
 ```
 
-The monitor samples every 2 seconds. It triggers only after 3 consecutive high readings, roughly 6 seconds, then enters a 120-second cooldown.
+The monitor samples every 2 seconds. It needs 3 high readings in a row before it triggers, so a single bad frame does not immediately cause an alert. After an alert, it waits 120 seconds before sending another one.
 
 ## local stress signals
 
-Emotion Watch does not use a cloud vision model. It uses MediaPipe face blendshapes locally.
+No cloud vision model is used. The stress score comes from MediaPipe face blendshapes on the local machine.
 
 | Signal | What it looks for | Weight |
 |---|---|---:|
@@ -57,19 +56,17 @@ Emotion Watch does not use a cloud vision model. It uses MediaPipe face blendsha
 | eye squint | narrowed eyes and nearby tension | 20% |
 | expression freeze | jaw held shut plus overall tension lock | 20% |
 
-There is also a floor rule: if one signal is very high, the final stress score is not allowed to hide it inside the weighted average.
+There is also a floor rule. If one signal is very high, the final score should show that instead of burying it in the average.
 
 ## agent integration
 
-Emotion Watch is built as an OpenClaw skill, but the runtime boundary is intentionally simple: alerts are plain JSON files in `/tmp`.
+Emotion Watch is packaged as an OpenClaw skill, but the handoff is just a JSON file in `/tmp`. That makes it easy to use with other CLI agents too.
 
-That means it can work with:
+Known use cases:
 
-- OpenClaw
-- Claude Code
-- other local CLI agents
-- shell scripts or cron jobs
-- any process that can read `/tmp/oc_emotion_alert.json`
+- OpenClaw launches the monitor and watches for alerts
+- Claude Code watches `/tmp/oc_emotion_alert.json` during a long work session
+- a shell script or cron job relays the alert somewhere else
 
 Example alert:
 
@@ -87,13 +84,17 @@ Example alert:
 }
 ```
 
-The agent should not dump the JSON. It should relay the `message` warmly, then delete the alert file so the same message is not repeated.
+The agent should read the `message`, say it naturally, and then remove the file so it does not repeat the same alert.
+
+```bash
+rm -f /tmp/oc_emotion_alert.json
+```
 
 ## alert style
 
-The messages avoid abstract emotion labels where possible. "You seem anxious" is not very useful to someone who cannot identify anxiety from the inside.
+The messages avoid abstract emotion labels when possible. "You seem anxious" is not always useful to someone who cannot identify anxiety from the inside.
 
-Emotion Watch uses body-based language and concrete actions:
+The app uses body language and concrete actions instead:
 
 | Dominant signal | Message |
 |---|---|
@@ -105,14 +106,15 @@ Emotion Watch uses body-based language and concrete actions:
 
 ## privacy
 
-Privacy is the point of the implementation.
+The webcam makes this sensitive, so the current build keeps the image path short.
 
-- 100% local inference. MediaPipe runs on the machine.
-- No cloud vision API. No image upload.
-- No images saved. Frames are processed in memory.
-- Mosaic privacy in the dashboard: the background is pixelated, face area only is revealed.
-- The only persistent output is `/tmp/oc_emotion_alert.json`, which contains a timestamp, score, signal values, and a message.
-- Close the dashboard window or press `q` to stop.
+- analysis runs locally with MediaPipe
+- no cloud vision API
+- no screenshots saved to disk
+- frames are processed in memory
+- the dashboard pixelates the background and reveals only the face area
+- the only persistent output is the alert JSON, with score, signal values, timestamp, and message
+- press `q` or close the window to stop
 
 ## requirements
 
@@ -128,37 +130,35 @@ Install dependencies:
 pip3 install mediapipe opencv-python
 ```
 
-The MediaPipe task model is included in `scripts/face_landmarker_v2_with_blendshapes.task`.
+The MediaPipe task model is included at:
+
+```text
+scripts/face_landmarker_v2_with_blendshapes.task
+```
 
 ## run it
-
-Launch the local monitor:
 
 ```bash
 python3 scripts/emotion_watch.py
 ```
 
-The dashboard opens immediately. Press `q` or close the window to stop.
+A dashboard window opens. Press `q` or close it to stop.
 
 ## OpenClaw usage
 
-Install this repository as an OpenClaw skill, then ask OpenClaw to launch the monitor:
+Install this repository as an OpenClaw skill, then have OpenClaw launch the monitor:
 
 ```bash
 python3 {baseDir}/scripts/emotion_watch.py &
 ```
 
-Then have OpenClaw poll the alert file every 30-60 seconds:
+Have the agent check for alerts every 30 to 60 seconds:
 
 ```bash
 cat /tmp/oc_emotion_alert.json 2>/dev/null
 ```
 
-When an alert appears, OpenClaw should relay the message and delete the file:
-
-```bash
-rm -f /tmp/oc_emotion_alert.json
-```
+If an alert exists, relay the `message` field and delete the file.
 
 ## project structure
 

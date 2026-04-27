@@ -1,18 +1,10 @@
-# Emotion Watch — design doc
+# Emotion Watch design notes
 
-OpenClaw skill / local CLI-agent companion / hackathon build
+Emotion Watch is a local facial stress monitor that can be driven by OpenClaw or another CLI agent.
 
-## what it does
+The monitor itself is a Python script. It opens a webcam dashboard, runs MediaPipe FaceLandmarker locally, calculates a stress score from face blendshapes, and writes an alert file when stress stays high. The agent side is deliberately boring: read a JSON file, say the message, delete the file.
 
-Emotion Watch is a local facial stress-signal monitor.
-
-It runs a Python dashboard, reads webcam frames, extracts MediaPipe FaceLandmarker blendshapes, and computes a stress score from facial tension signals. When stress stays high for several readings, it writes a JSON alert to `/tmp/oc_emotion_alert.json`.
-
-OpenClaw, Claude Code, or any other CLI agent can watch that file and turn the alert into a warm reminder in chat.
-
-The target user is someone with alexithymia. They may not notice their own emotional load rising, but their face can show early physical signs. Emotion Watch acts like a lightweight electronic job coach.
-
-## architecture
+## runtime shape
 
 ```text
 scripts/emotion_watch.py
@@ -25,54 +17,57 @@ scripts/emotion_watch.py
     └─ /tmp/oc_emotion_alert.json
              │
              ▼
-      OpenClaw / CLI agent relays message
+      OpenClaw / Claude Code / CLI agent
 ```
 
-No MiniMax. No cloud vision. No image upload.
+There is no MiniMax call in the current build. No cloud vision call. No image upload.
 
 ## dashboard
 
-The dashboard has two parts:
+The dashboard has a camera area and a signal panel.
 
-- camera panel: mosaic background with an elliptical face reveal
-- analysis panel: score, signal bars, streak, cooldown, and alert message
+The camera area is intentionally privacy-heavy: the background is pixelated and the face area is shown through a soft ellipse. This also makes for a clearer demo, because viewers can see that the app cares about the face signal, not the room.
 
-The mosaic is not just decoration. It makes the privacy model visible in the demo: the app needs the face, not the room.
+The panel shows:
+
+- stress score
+- brow, lip, eye, and freeze signals
+- current streak
+- cooldown status
+- active alert message
 
 ## stress formula
 
-Every 2 seconds, the monitor runs FaceLandmarker and reads blendshapes.
+Every 2 seconds, the monitor runs FaceLandmarker and reads the face blendshapes.
 
-Signals:
-
-| Signal | Blendshapes / calculation | Weight |
+| Signal | Inputs | Weight |
 |---|---|---:|
 | brow_furrow | `browDownLeft`, `browDownRight`, `browInnerUp` | 35% |
 | lip_press | `mouthPressLeft`, `mouthPressRight`, `mouthStretchLeft`, `mouthStretchRight`, `jawForward` | 25% |
 | eye_squint | `eyeSquintLeft`, `eyeSquintRight`, `noseSneerLeft`, `noseSneerRight` | 20% |
 | expression_freeze | jaw held shut plus average tension | 20% |
 
-Weighted score:
+Score:
 
 ```text
 stress = 100 * max(weighted_average, max_signal * 0.65)
 ```
 
-The floor rule prevents one strong signal from disappearing inside the average.
+The second term is a floor. If one signal spikes hard, the score should not look harmless just because the other signals are quiet.
 
 ## trigger rules
 
 - threshold: `stress_score >= 60`
-- required streak: 3 consecutive readings
+- required streak: 3 readings
 - sample interval: 2 seconds
-- trigger delay: about 6 seconds
+- approximate trigger delay: 6 seconds
 - cooldown: 120 seconds
 
-If no face is detected, the streak resets and no alert is written.
+No face means no alert. The streak resets.
 
-## alert output
+## alert file
 
-Alert file path:
+Path:
 
 ```text
 /tmp/oc_emotion_alert.json
@@ -94,20 +89,20 @@ Example:
 }
 ```
 
-Agents should relay `message`, not the raw JSON, then remove the file.
+The agent should relay `message`, not the raw JSON. After that, remove the file.
 
 ## message selection
 
-If `stress_score >= 80`, the high-stress message overrides everything.
+If `stress_score >= 80`, use the high-stress message.
 
-Otherwise, the message is selected by dominant signal:
+Otherwise, pick the message from the dominant signal:
 
-- brow_furrow
-- expression_freeze
-- lip_press
-- eye_squint
+- `brow_furrow`
+- `expression_freeze`
+- `lip_press`
+- `eye_squint`
 
-If no signal dominates, the monitor picks from a default pool of body-based actions: water, stretch, walk, breathing, looking away from the screen.
+If no signal dominates, pick from the default pool of short body-based actions: water, stretch, walk, breathe, look away from the screen.
 
 ## privacy model
 
@@ -115,19 +110,19 @@ If no signal dominates, the monitor picks from a default pool of body-based acti
 - no screenshots are written to disk
 - no cloud API is called
 - background is pixelated in the dashboard
-- only the JSON alert persists, and it contains no image data
+- only the alert JSON persists, and it has no image data
 
 ## platform
 
-Current build targets macOS because MacBooks have a predictable built-in webcam setup and OpenCV camera access is straightforward. USB cameras should work too.
+The current build targets macOS. MacBooks have a built-in camera and predictable OpenCV access. USB cameras should work, but the hackathon version was tested for Mac first.
 
 ## files
 
 ```text
 SKILL.md                                      OpenClaw skill instructions
-DESIGN.md                                     this document
+DESIGN.md                                     design notes
 _meta.json                                    OpenClaw metadata
-scripts/emotion_watch.py                      main local monitor
+scripts/emotion_watch.py                      local monitor
 scripts/face_landmarker_v2_with_blendshapes.task  MediaPipe model
-scripts/capture.sh                            legacy/simple capture helper
+scripts/capture.sh                            simple capture helper, kept for experiments
 ```
