@@ -29,18 +29,18 @@ CAM_H = 400
 TOTAL_W = CAM_W + PANEL_W
 
 MESSAGES = {
-    "brow_furrow": "Feels like things have been a bit intense lately. Try taking a slow breath and letting your shoulders drop.",
-    "expression_freeze": "You've been really focused for a while — that kind of deep lock-in can sneak up on you. Step away for just 2 minutes.",
-    "lip_press": "Might be a good moment to pause. Three slow breaths — in through your nose, out through your mouth.",
-    "eye_squint": "You've been staring at the screen for a while. Look at something far away for 20 seconds — your eyes will thank you.",
+    "brow_furrow": "Hey, things feeling a bit heavy right now? Take a slow breath — drop your shoulders, unclench your jaw. You've got this.",
+    "expression_freeze": "You've been deep in it for a while. That kind of focus is great, but your brain needs air too. Two minutes away — seriously, it helps.",
+    "lip_press": "Pause for a sec. Breathe in slowly through your nose... and out. Do that three times. You'll feel the difference.",
+    "eye_squint": "Your eyes have been working overtime. Pick something far away and just... look at it for 20 seconds. No screen, no task. Just rest.",
 }
-HIGH_STRESS_MSG = "Hey — it might be time for a real break. Walk away from the screen for 5 minutes. You'll come back sharper."
+HIGH_STRESS_MSG = "Hey — I think you need a real break right now. Not a quick stretch, a proper one. Step away for 5 minutes. You'll come back clearer, I promise."
 DEFAULT_POOL = [
-    "Quick check-in: grab some water and step away from the screen for a moment.",
-    "You've been at it for a while. Stand up and stretch for 60 seconds.",
-    "Take a breath. Look at something far away for one minute.",
-    "Small pause — how are you actually doing right now? A short walk might help.",
-    "Five minutes away from the screen will pay back double. You've earned it.",
+    "Quick check-in — when did you last drink some water? Grab a glass and step away for a moment.",
+    "You've been at this for a while. Stand up, stretch it out. 60 seconds is all it takes.",
+    "Take a breath. Find something far away and just look at it for a minute. Let your mind wander.",
+    "Hey, how are you actually doing right now? Sometimes a short walk is the best thing you can do.",
+    "Five minutes away from the screen will pay back double. You've earned a break.",
 ]
 
 BLENDSHAPE_MAP = {}

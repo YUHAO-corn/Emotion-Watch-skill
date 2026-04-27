@@ -99,10 +99,10 @@ Messages are selected based on the dominant stress signal:
 
 | Dominant Signal | Message |
 |---|---|
-| brow_furrow | "Feels like things have been a bit intense lately. Try taking a slow breath and letting your shoulders drop." |
-| expression_freeze | "You've been really focused for a while — that kind of deep lock-in can sneak up on you. Step away for just 2 minutes." |
-| lip_press | "Might be a good moment to pause. Three slow breaths — in through your nose, out through your mouth." |
-| eye_squint | "You've been staring at the screen for a while. Look at something far away for 20 seconds — your eyes will thank you." |
-| score >= 80 | "Hey — it might be time for a real break. Walk away from the screen for 5 minutes. You'll come back sharper." |
+| brow_furrow | "Hey, things feeling a bit heavy right now? Take a slow breath — drop your shoulders, unclench your jaw. You've got this." |
+| expression_freeze | "You've been deep in it for a while. That kind of focus is great, but your brain needs air too. Two minutes away — seriously, it helps." |
+| lip_press | "Pause for a sec. Breathe in slowly through your nose... and out. Do that three times. You'll feel the difference." |
+| eye_squint | "Your eyes have been working overtime. Pick something far away and just... look at it for 20 seconds. No screen, no task. Just rest." |
+| score >= 80 | "Hey — I think you need a real break right now. Not a quick stretch, a proper one. Step away for 5 minutes. You'll come back clearer, I promise." |
 
 When no single signal dominates, a random gentle nudge is picked from a pool of 5 messages — all concrete physical actions (drink water, stretch, walk, breathe), never abstract advice.
