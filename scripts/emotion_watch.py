@@ -23,9 +23,9 @@ COOLDOWN_SECONDS = 120
 CONSECUTIVE_REQUIRED = 3
 CAPTURE_INTERVAL = 2
 WINDOW_NAME = "Emotion Watch"
-PANEL_W = 360
-CAM_W = 480
-CAM_H = 480
+PANEL_W = 300
+CAM_W = 400
+CAM_H = 400
 TOTAL_W = CAM_W + PANEL_W
 
 MESSAGES = {
@@ -47,7 +47,6 @@ BLENDSHAPE_MAP = {}
 
 
 def find_builtin_camera():
-    """Try camera indices 0-4, prefer the one that isn't the iPhone Continuity Camera."""
     for idx in range(5):
         cap = cv2.VideoCapture(idx)
         if cap.isOpened():
@@ -80,19 +79,46 @@ def compute_stress(blendshapes):
 
     brow_down_l = get_bs(blendshapes, "browDownLeft")
     brow_down_r = get_bs(blendshapes, "browDownRight")
+    brow_inner_up = get_bs(blendshapes, "browInnerUp")
     mouth_press_l = get_bs(blendshapes, "mouthPressLeft")
     mouth_press_r = get_bs(blendshapes, "mouthPressRight")
+    mouth_stretch_l = get_bs(blendshapes, "mouthStretchLeft")
+    mouth_stretch_r = get_bs(blendshapes, "mouthStretchRight")
     eye_squint_l = get_bs(blendshapes, "eyeSquintLeft")
     eye_squint_r = get_bs(blendshapes, "eyeSquintRight")
     jaw_open = get_bs(blendshapes, "jawOpen")
+    jaw_clench_val = get_bs(blendshapes, "jawForward")
+    nose_sneer_l = get_bs(blendshapes, "noseSneerLeft")
+    nose_sneer_r = get_bs(blendshapes, "noseSneerRight")
 
-    brow_furrow = min(1.0, (brow_down_l + brow_down_r) / 2.0 * 2.5)
-    lip_press = min(1.0, (mouth_press_l + mouth_press_r) / 2.0 * 2.5)
-    eye_squint = min(1.0, (eye_squint_l + eye_squint_r) / 2.0 * 2.5)
-    jaw_clench = max(0, 1.0 - jaw_open * 5) if jaw_open < 0.1 else 0.0
-    expression_freeze = min(1.0, lip_press * 0.3 + brow_furrow * 0.3 + (1.0 - eye_squint) * 0.1 + jaw_clench * 0.3)
+    # Brow tension: combine down + inner up (both indicate concentration/stress)
+    brow_raw = max((brow_down_l + brow_down_r) / 2.0, brow_inner_up * 0.8)
+    brow_furrow = min(1.0, brow_raw * 3.0)
 
-    stress_score = int(100 * (0.50 * brow_furrow + 0.20 * lip_press + 0.10 * eye_squint + 0.20 * expression_freeze))
+    # Lip/jaw tension: press + stretch + clench
+    lip_raw = (mouth_press_l + mouth_press_r) / 2.0
+    stretch_raw = (mouth_stretch_l + mouth_stretch_r) / 2.0
+    lip_press = min(1.0, (lip_raw + stretch_raw * 0.5 + jaw_clench_val * 0.5) * 3.0)
+
+    # Eye tension: squint + nose sneer (often co-occur with stress)
+    eye_raw = (eye_squint_l + eye_squint_r) / 2.0
+    sneer_raw = (nose_sneer_l + nose_sneer_r) / 2.0
+    eye_squint = min(1.0, (eye_raw + sneer_raw * 0.3) * 2.0)
+
+    # Expression freeze: low variance across all signals = face locked up
+    jaw_shut = max(0, 1.0 - jaw_open * 10) if jaw_open < 0.05 else 0.0
+    all_signals = [brow_furrow, lip_press, eye_squint]
+    avg_tension = sum(all_signals) / len(all_signals)
+    expression_freeze = min(1.0, jaw_shut * 0.4 + avg_tension * 0.6)
+
+    # Weighted average
+    weighted = 0.35 * brow_furrow + 0.25 * lip_press + 0.20 * eye_squint + 0.20 * expression_freeze
+
+    # Floor: if any single signal is very high, stress should reflect that
+    max_signal = max(brow_furrow, lip_press, eye_squint, expression_freeze)
+    floor = max_signal * 0.65
+
+    stress_score = int(100 * max(weighted, floor))
     stress_score = min(100, max(0, stress_score))
 
     signals = {
@@ -108,6 +134,30 @@ def compute_stress(blendshapes):
     return stress_score, signals, dominant
 
 
+def get_face_crop(frame, landmarks, padding=0.3):
+    """Crop face region from frame using landmarks."""
+    h, w = frame.shape[:2]
+    xs = [lm.x * w for lm in landmarks]
+    ys = [lm.y * h for lm in landmarks]
+    x_min, x_max = int(min(xs)), int(max(xs))
+    y_min, y_max = int(min(ys)), int(max(ys))
+
+    face_w = x_max - x_min
+    face_h = y_max - y_min
+    pad_x = int(face_w * padding)
+    pad_y = int(face_h * padding)
+
+    x_min = max(0, x_min - pad_x)
+    x_max = min(w, x_max + pad_x)
+    y_min = max(0, y_min - pad_y)
+    y_max = min(h, y_max + pad_y)
+
+    crop = frame[y_min:y_max, x_min:x_max]
+    if crop.size == 0:
+        return frame
+    return crop
+
+
 def select_message(stress_score, dominant):
     if stress_score >= 80:
         return HIGH_STRESS_MSG
@@ -117,12 +167,12 @@ def select_message(stress_score, dominant):
 
 
 def draw_signal_bar(panel, x, y, w, val, color):
-    bar_h = 10
-    cv2.rectangle(panel, (x, y), (x + w, y + bar_h), (60, 60, 60), -1)
+    bar_h = 8
+    cv2.rectangle(panel, (x, y), (x + w, y + bar_h), (50, 50, 50), -1)
     fill = int(w * min(1.0, val))
     if fill > 0:
         cv2.rectangle(panel, (x, y), (x + fill, y + bar_h), color, -1)
-    return y + bar_h + 6
+    return y + bar_h + 4
 
 
 def stress_color(score):
@@ -135,7 +185,7 @@ def stress_color(score):
     return (80, 220, 120)
 
 
-def wrap_text(text, max_chars=38):
+def wrap_text(text, max_chars=32):
     words = text.split()
     lines = []
     line = ""
@@ -152,112 +202,92 @@ def wrap_text(text, max_chars=38):
     return lines
 
 
-def build_panel(h, stress_score, signals, dominant, message, has_face, consecutive, cooldown_remaining, snapshot):
+def build_panel(h, stress_score, signals, dominant, message, has_face, consecutive, cooldown_remaining):
     panel = np.zeros((h, PANEL_W, 3), dtype=np.uint8)
     panel[:] = (25, 25, 30)
 
-    x0 = 20
-    y = 40
+    x0 = 15
+    y = 30
 
     # Title
-    cv2.putText(panel, "EMOTION WATCH", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 220, 255), 2)
-    y += 12
+    cv2.putText(panel, "EMOTION WATCH", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 220, 255), 2)
 
-    # Divider
-    y += 10
-    cv2.line(panel, (x0, y), (PANEL_W - 20, y), (60, 60, 60), 1)
-    y += 20
-
-    # Status dot
-    status_color = (80, 220, 120) if has_face else (70, 70, 255)
-    status_text = "Face Detected" if has_face else "No Face Detected"
-    cv2.circle(panel, (x0 + 6, y - 5), 7, status_color, -1)
-    cv2.putText(panel, status_text, (x0 + 22, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, status_color, 1)
+    # Status
     y += 30
-
-    # Snapshot thumbnail (last analyzed frame)
-    if snapshot is not None:
-        thumb_h = 120
-        thumb_w = 160
-        thumb = cv2.resize(snapshot, (thumb_w, thumb_h))
-        ty = y
-        tx = (PANEL_W - thumb_w) // 2
-        # Border color based on stress
-        border_color = stress_color(stress_score) if has_face else (60, 60, 60)
-        cv2.rectangle(panel, (tx - 2, ty - 2), (tx + thumb_w + 2, ty + thumb_h + 2), border_color, 2)
-        panel[ty:ty + thumb_h, tx:tx + thumb_w] = thumb
-        cv2.putText(panel, "Last Analyzed Frame", (tx, ty + thumb_h + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (120, 120, 120), 1)
-        y += thumb_h + 30
+    status_color = (80, 220, 120) if has_face else (70, 70, 255)
+    status_text = "Face Detected" if has_face else "No Face"
+    cv2.circle(panel, (x0 + 5, y - 4), 5, status_color, -1)
+    cv2.putText(panel, status_text, (x0 + 18, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, status_color, 1)
 
     if not has_face:
-        cv2.putText(panel, "Waiting for face...", (x0, y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
+        y += 30
+        cv2.putText(panel, "Waiting for face...", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 100, 100), 1)
         return panel
 
     # Stress score
-    cv2.putText(panel, "STRESS SCORE", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (150, 150, 150), 1)
-    y += 8
+    y += 25
+    cv2.putText(panel, "STRESS", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (130, 130, 130), 1)
+    y += 5
 
-    # Big number
     sc = stress_color(stress_score)
-    cv2.putText(panel, str(stress_score), (x0, y + 42), cv2.FONT_HERSHEY_SIMPLEX, 1.6, sc, 3)
-    cv2.putText(panel, "/ 100", (x0 + 75, y + 42), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
-    y += 52
+    cv2.putText(panel, str(stress_score), (x0, y + 35), cv2.FONT_HERSHEY_SIMPLEX, 1.4, sc, 3)
+    cv2.putText(panel, "/ 100", (x0 + 60, y + 35), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
+    y += 42
 
     # Stress bar
-    bar_w = PANEL_W - 40
-    bar_h = 14
+    bar_w = PANEL_W - 30
+    bar_h = 10
     cv2.rectangle(panel, (x0, y), (x0 + bar_w, y + bar_h), (50, 50, 50), -1)
     fill_w = int(bar_w * stress_score / 100)
     if fill_w > 0:
         cv2.rectangle(panel, (x0, y), (x0 + fill_w, y + bar_h), sc, -1)
-    y += bar_h + 20
+    y += bar_h + 15
 
     # Divider
-    cv2.line(panel, (x0, y), (PANEL_W - 20, y), (60, 60, 60), 1)
-    y += 15
+    cv2.line(panel, (x0, y), (PANEL_W - 15, y), (50, 50, 50), 1)
+    y += 12
 
-    # Signal breakdown
-    cv2.putText(panel, "SIGNAL BREAKDOWN", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
-    y += 18
+    # Signals
+    cv2.putText(panel, "SIGNALS", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (130, 130, 130), 1)
+    y += 14
 
     signal_labels = {
-        "brow_furrow": "Brow Furrow",
-        "lip_press": "Lip Press",
-        "eye_squint": "Eye Squint",
-        "expression_freeze": "Expr. Freeze",
+        "brow_furrow": "Brow",
+        "lip_press": "Lip",
+        "eye_squint": "Eye",
+        "expression_freeze": "Freeze",
     }
-    bar_w = PANEL_W - 130
+    bar_w = PANEL_W - 90
     for key, label in signal_labels.items():
         val = signals.get(key, 0)
         is_dom = (key == dominant)
-        color = (100, 220, 255) if is_dom else (140, 140, 140)
-        marker = " *" if is_dom else ""
-        cv2.putText(panel, f"{label}{marker}", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
-        cv2.putText(panel, f"{val:.2f}", (PANEL_W - 60, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
-        y += 5
-        y = draw_signal_bar(panel, x0, y, bar_w, val, color)
+        color = (100, 220, 255) if is_dom else (120, 120, 120)
+        cv2.putText(panel, f"{label}", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1)
+        cv2.putText(panel, f"{val:.2f}", (PANEL_W - 50, y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
         y += 4
+        y = draw_signal_bar(panel, x0 + 50, y, bar_w - 20, val, color)
+        y += 2
 
     # Consecutive + cooldown
-    y += 5
-    cv2.line(panel, (x0, y), (PANEL_W - 20, y), (60, 60, 60), 1)
-    y += 15
-    cv2.putText(panel, f"Consecutive: {consecutive}/{CONSECUTIVE_REQUIRED}", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (140, 140, 140), 1)
-    y += 22
+    y += 8
+    cv2.line(panel, (x0, y), (PANEL_W - 15, y), (50, 50, 50), 1)
+    y += 14
+    cv2.putText(panel, f"Streak: {consecutive}/{CONSECUTIVE_REQUIRED}", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (120, 120, 120), 1)
+    y += 18
     if cooldown_remaining > 0:
-        cv2.putText(panel, f"Cooldown: {cooldown_remaining}s", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (60, 180, 255), 1)
-        y += 22
+        cv2.putText(panel, f"Cooldown: {cooldown_remaining}s", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (60, 180, 255), 1)
+        y += 18
 
     # Alert message
     if message:
         y += 5
-        cv2.line(panel, (x0, y), (PANEL_W - 20, y), (70, 70, 255), 1)
+        cv2.line(panel, (x0, y), (PANEL_W - 15, y), (70, 70, 255), 1)
+        y += 14
+        cv2.putText(panel, "ALERT", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (70, 70, 255), 2)
         y += 18
-        cv2.putText(panel, "ALERT", (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (70, 70, 255), 2)
-        y += 22
         for line in wrap_text(message):
-            cv2.putText(panel, line, (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 255), 1)
-            y += 18
+            cv2.putText(panel, line, (x0, y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (200, 200, 255), 1)
+            y += 15
 
     return panel
 
@@ -313,7 +343,7 @@ def main():
     last_dominant = "none"
     last_has_face = False
     last_stress = 0
-    snapshot = None
+    face_crop = None
 
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
     print("Emotion Watch started. Press 'q' or close window to quit.")
@@ -326,9 +356,6 @@ def main():
         frame = cv2.flip(frame, 1)
         now = time.time()
 
-        # Resize camera feed to fixed size
-        cam_frame = cv2.resize(frame, (CAM_W, CAM_H))
-
         if now - last_analysis_time >= CAPTURE_INTERVAL:
             last_analysis_time = now
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -337,13 +364,16 @@ def main():
 
             if result.face_blendshapes and len(result.face_blendshapes) > 0:
                 last_has_face = True
-                snapshot = frame.copy()
                 blendshapes = result.face_blendshapes[0]
                 stress_score, signals, dominant = compute_stress(blendshapes)
                 last_stress = stress_score
                 last_signals = signals
                 last_dominant = dominant
                 stress_history.append(stress_score)
+
+                # Crop face using landmarks
+                if result.face_landmarks and len(result.face_landmarks) > 0:
+                    face_crop = get_face_crop(frame, result.face_landmarks[0])
 
                 avg_stress = int(sum(stress_history) / len(stress_history))
                 cooldown_remaining = max(0, int(COOLDOWN_SECONDS - (now - last_alert_time)))
@@ -363,6 +393,7 @@ def main():
                 last_has_face = False
                 stress_history.clear()
                 consecutive = 0
+                face_crop = None
 
         if now > message_display_until:
             current_message = None
@@ -370,18 +401,23 @@ def main():
         cooldown_remaining = max(0, int(COOLDOWN_SECONDS - (now - last_alert_time)))
         avg_stress = int(sum(stress_history) / len(stress_history)) if stress_history else 0
 
-        # Build side panel
+        # Left side: face crop only (privacy)
+        if face_crop is not None:
+            cam_display = cv2.resize(face_crop, (CAM_W, CAM_H))
+        else:
+            cam_display = np.zeros((CAM_H, CAM_W, 3), dtype=np.uint8)
+            cv2.putText(cam_display, "No Face", (CAM_W // 2 - 60, CAM_H // 2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (80, 80, 80), 2)
+
+        # Right side: panel
         panel = build_panel(
             CAM_H, avg_stress, last_signals, last_dominant,
-            current_message, last_has_face, consecutive, cooldown_remaining, snapshot
+            current_message, last_has_face, consecutive, cooldown_remaining
         )
 
-        # Combine: camera left, panel right
-        combined = np.hstack([cam_frame, panel])
-
+        combined = np.hstack([cam_display, panel])
         cv2.imshow(WINDOW_NAME, combined)
 
-        # Check for 'q' key or window close
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
