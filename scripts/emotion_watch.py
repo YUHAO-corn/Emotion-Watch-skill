@@ -134,8 +134,8 @@ def compute_stress(blendshapes):
     return stress_score, signals, dominant
 
 
-def get_face_crop(frame, landmarks, padding=0.3):
-    """Crop face region from frame using landmarks."""
+def mosaic_with_face_reveal(frame, landmarks, padding=0.3, mosaic_factor=20):
+    """Full frame with heavy mosaic everywhere except the face region."""
     h, w = frame.shape[:2]
     xs = [lm.x * w for lm in landmarks]
     ys = [lm.y * h for lm in landmarks]
@@ -152,10 +152,25 @@ def get_face_crop(frame, landmarks, padding=0.3):
     y_min = max(0, y_min - pad_y)
     y_max = min(h, y_max + pad_y)
 
-    crop = frame[y_min:y_max, x_min:x_max]
-    if crop.size == 0:
-        return frame
-    return crop
+    # Create mosaic version of entire frame
+    small = cv2.resize(frame, (w // mosaic_factor, h // mosaic_factor), interpolation=cv2.INTER_LINEAR)
+    mosaic = cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
+
+    # Create elliptical mask for face region
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cx = (x_min + x_max) // 2
+    cy = (y_min + y_max) // 2
+    rx = (x_max - x_min) // 2
+    ry = (y_max - y_min) // 2
+    cv2.ellipse(mask, (cx, cy), (rx, ry), 0, 0, 360, 255, -1)
+
+    # Feather the edge for smooth transition
+    mask = cv2.GaussianBlur(mask, (31, 31), 10)
+    mask_3ch = cv2.merge([mask, mask, mask]).astype(np.float32) / 255.0
+
+    # Blend: face area = original, rest = mosaic
+    result = (frame.astype(np.float32) * mask_3ch + mosaic.astype(np.float32) * (1.0 - mask_3ch)).astype(np.uint8)
+    return result
 
 
 def select_message(stress_score, dominant):
@@ -371,9 +386,9 @@ def main():
                 last_dominant = dominant
                 stress_history.append(stress_score)
 
-                # Crop face using landmarks
+                # Mosaic background, reveal face only
                 if result.face_landmarks and len(result.face_landmarks) > 0:
-                    face_crop = get_face_crop(frame, result.face_landmarks[0])
+                    face_crop = mosaic_with_face_reveal(frame, result.face_landmarks[0])
 
                 avg_stress = int(sum(stress_history) / len(stress_history))
                 cooldown_remaining = max(0, int(COOLDOWN_SECONDS - (now - last_alert_time)))
