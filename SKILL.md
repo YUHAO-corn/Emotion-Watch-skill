@@ -1,69 +1,108 @@
 ---
 name: emotion-watch
-description: Silent background stress monitor with live dashboard. Uses MediaPipe FaceMesh blendshapes to detect facial tension (brow furrow, lip press, eye squint, expression freeze) locally — no images leave your machine. Shows a real-time visualization window and sends caring nudges when sustained stress is detected.
+description: Silent background stress monitor. Launches a local webcam dashboard that analyzes facial tension via MediaPipe blendshapes — 100% offline, no images leave the machine. When sustained stress is detected, writes an alert to /tmp/oc_emotion_alert.json. Any agent (OpenClaw, Claude Code, CLI agents) can watch this file and relay caring nudges to the user.
 homepage: https://github.com/godcorn/emotion-watch
 metadata: {"openclaw": {"emoji": "🫂", "requires": {"pip": ["mediapipe", "opencv-python"], "bin": ["python3"]}, "primaryEnv": ""}}
 ---
 
 # Emotion Watch
 
-A silent stress guardian that monitors your face locally and nudges you before you hit a breaking point. Built for people with alexithymia — watches your face so you don't have to.
+A silent stress guardian. It watches your face so you don't have to.
 
-## Quick Start
+Built for people with alexithymia (difficulty perceiving their own emotional state) — the same group that job coaches support in the workplace. When the coach isn't there, this skill fills the gap.
+
+## How It Works
+
+A Python script runs in the background with a live dashboard window:
+
+- **Left side**: webcam feed with mosaic privacy (background pixelated, only face revealed via elliptical mask)
+- **Right side**: real-time stress analysis panel (score, signal bars, alerts)
+
+Every 2 seconds, MediaPipe FaceLandmarker extracts 52 blendshapes from the face and computes a stress score from 4 signals:
+
+| Signal | What it measures | Weight |
+|---|---|---|
+| Brow Furrow | browDown + browInnerUp | 35% |
+| Lip Press | mouthPress + mouthStretch + jawForward | 25% |
+| Eye Squint | eyeSquint + noseSneer | 20% |
+| Expression Freeze | jaw clenched + average tension lock | 20% |
+
+A floor rule ensures that if any single signal is very high, the total score reflects it (at least 65% of the max signal).
+
+**Trigger**: stress_score >= 60 for 3 consecutive readings (~6 seconds), then 120s cooldown before next alert.
+
+## For Agents: How to Use This Skill
+
+### Step 1: Launch the Monitor
 
 ```bash
-python3 ~/.openclaw/workspace/skills/emotion-watch/scripts/emotion_watch.py
+python3 {baseDir}/scripts/emotion_watch.py &
 ```
 
-Press `q` to quit.
+This opens a dashboard window and starts monitoring. It runs until the user presses `q` or closes the window.
 
-## What It Does
+### Step 2: Watch for Alerts
 
-- Opens webcam with a live dashboard overlay
-- Runs MediaPipe FaceMesh blendshapes every 2 seconds (100% local, no network)
-- Computes stress score from 4 signals: brow furrow, lip press, eye squint, expression freeze
-- When stress stays above threshold for ~6 seconds, sends a caring nudge
-- Writes alert JSON to `/tmp/oc_emotion_alert.json` for OpenClaw to pick up
+Poll `/tmp/oc_emotion_alert.json` periodically (every 30-60 seconds):
 
-## Dashboard Shows
-
-- Live camera feed with face mesh
-- Stress score bar (green → yellow → orange → red)
-- Individual signal bars (brow, lip, eye, freeze)
-- Consecutive high-reading counter
-- Cooldown timer after an alert
-- Alert message when triggered
-
-## Stress Formula
-
-```
-stress = 100 × (50% brow_furrow + 20% lip_press + 10% eye_squint + 20% expression_freeze)
+```bash
+cat /tmp/oc_emotion_alert.json 2>/dev/null
 ```
 
-Trigger: score >= 60 sustained for 3 consecutive readings (~6 seconds), then 120s cooldown.
-
-## Privacy
-
-- All analysis runs locally via MediaPipe — zero network calls
-- No frames saved to disk
-- No images sent anywhere
-- Camera feed only exists in memory while the window is open
-
-## Integration with OpenClaw
-
-When stress is detected, the script writes `/tmp/oc_emotion_alert.json`:
+When the file exists and has been recently updated, it contains:
 
 ```json
 {
   "timestamp": "2026-04-27 14:30:00",
   "stress_score": 72,
   "signals": {"brow_furrow": 0.8, "lip_press": 0.3, "eye_squint": 0.2, "expression_freeze": 0.5},
-  "message": "Your forehead's been working hard. Try releasing your jaw."
+  "message": "Your forehead's been working hard. Try releasing your jaw and letting your shoulders drop."
 }
 ```
 
-OpenClaw can watch this file and relay the message to the user through any channel.
+### Step 3: Relay the Message
 
-## One-Shot Check
+When you detect a new alert (check timestamp), relay the `message` field to the user in a warm, caring tone. Don't dump the JSON — speak like a friend:
 
-If the user asks "how am I doing?" or "check my stress" — run the script, read the latest `/tmp/oc_emotion_alert.json`, and share the result conversationally.
+> "Hey — I noticed your stress monitor picked up some tension. Your forehead's been working hard. Maybe try releasing your jaw and letting your shoulders drop."
+
+After relaying, you can delete the file to avoid re-sending:
+
+```bash
+rm -f /tmp/oc_emotion_alert.json
+```
+
+### One-Shot Check
+
+If the user asks "how am I doing?" or "check my stress":
+
+1. If the monitor is already running, read `/tmp/oc_emotion_alert.json`
+2. If not running, launch it: `python3 {baseDir}/scripts/emotion_watch.py &`
+3. Share the result conversationally
+
+## Privacy
+
+- **100% local** — MediaPipe runs on-device, zero network calls
+- **No images saved** — frames exist only in memory during analysis
+- **Mosaic privacy** — dashboard pixelates everything except the face, making privacy protection visually obvious
+- **No cloud APIs** — unlike vision API approaches, nothing leaves the machine
+
+## Requirements
+
+- macOS with built-in webcam (or any USB camera)
+- Python 3 with `mediapipe` and `opencv-python`
+- Install: `pip3 install mediapipe opencv-python`
+
+## Alert Messages
+
+Messages are selected based on the dominant stress signal:
+
+| Dominant Signal | Message |
+|---|---|
+| brow_furrow | "Your forehead's been working hard. Try releasing your jaw and letting your shoulders drop." |
+| expression_freeze | "You've gone really still — that can be a sign of overload. Step away for just 2 minutes." |
+| lip_press | "There's some tension around your mouth. Three slow breaths — in through nose, out through mouth." |
+| eye_squint | "Your eyes look strained. Look at something 20 feet away for 20 seconds." |
+| score >= 80 | "Hey — your face is showing something your mind might not have caught yet. Take a real break." |
+
+When no single signal dominates, a random gentle nudge is picked from a pool of 5 messages — all concrete physical actions (drink water, stretch, walk, breathe), never abstract advice.
