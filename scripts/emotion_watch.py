@@ -29,18 +29,18 @@ CAM_H = 400
 TOTAL_W = CAM_W + PANEL_W
 
 MESSAGES = {
-    "brow_furrow": "Your forehead's been working hard. Try releasing your jaw and letting your shoulders drop.",
-    "expression_freeze": "You've gone really still — that can be a sign of overload. Step away for just 2 minutes.",
-    "lip_press": "There's some tension around your mouth. Three slow breaths — in through nose, out through mouth.",
-    "eye_squint": "Your eyes look strained. Look at something 20 feet away for 20 seconds.",
+    "brow_furrow": "Feels like things have been a bit intense lately. Try taking a slow breath and letting your shoulders drop.",
+    "expression_freeze": "You've been really focused for a while — that kind of deep lock-in can sneak up on you. Step away for just 2 minutes.",
+    "lip_press": "Might be a good moment to pause. Three slow breaths — in through your nose, out through your mouth.",
+    "eye_squint": "You've been staring at the screen for a while. Look at something far away for 20 seconds — your eyes will thank you.",
 }
-HIGH_STRESS_MSG = "Hey — your face is showing something your mind might not have caught yet. Take a real break."
+HIGH_STRESS_MSG = "Hey — it might be time for a real break. Walk away from the screen for 5 minutes. You'll come back sharper."
 DEFAULT_POOL = [
-    "Quick check-in: grab some water and look away from the screen.",
-    "Your body's picking up stress before you are. Stand up and stretch.",
+    "Quick check-in: grab some water and step away from the screen for a moment.",
+    "You've been at it for a while. Stand up and stretch for 60 seconds.",
     "Take a breath. Look at something far away for one minute.",
-    "Small pause — how are you actually doing right now?",
-    "You've been locked in for a while. Five minutes away will pay back double.",
+    "Small pause — how are you actually doing right now? A short walk might help.",
+    "Five minutes away from the screen will pay back double. You've earned it.",
 ]
 
 BLENDSHAPE_MAP = {}
