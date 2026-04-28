@@ -10,11 +10,9 @@ The idea is simple: a job coach can sometimes see overload before the person fee
 
 ## demo
 
-![Emotion Watch promo](assets/promo.png)
+![Emotion Watch hero](assets/hero.png)
 
-![Emotion Watch dashboard](assets/dashboard.png)
-
-The dashboard uses a cartoon face in the screenshot instead of a real person. That is intentional: the project is about privacy, and the demo should not require showing a real user's face.
+This mockup uses a privacy-safe demo face and a simulated OpenClaw chat. The actual monitor runs locally: it reads facial tension, writes an alert file, and lets OpenClaw or another CLI agent relay the reminder.
 
 The current build has:
 
