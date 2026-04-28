@@ -10,9 +10,13 @@ The idea is simple: a job coach can sometimes see overload before the person fee
 
 ## demo
 
-Video and screenshots are not uploaded yet.
+![Emotion Watch promo](assets/promo.png)
 
-The current build has a live dashboard:
+![Emotion Watch dashboard](assets/dashboard.png)
+
+The dashboard uses a cartoon face in the screenshot instead of a real person. That is intentional: the project is about privacy, and the demo should not require showing a real user's face.
+
+The current build has:
 
 - webcam preview on the left
 - background pixelated for privacy, with only the face area visible
